@@ -17,6 +17,7 @@
 #import <objc/runtime.h>
 
 @interface RCTTextView(SetTextNotifyChange)
+@property(assign) RCTEventDispatcher* myEventDispatcher;
 @end
 
 @implementation RCTTextView(SetTextNotifyChange)
@@ -50,9 +51,9 @@
     return objc_getAssociatedObject(self, @selector(myEventDispatcher));
 }
 
-- (BOOL) my_textView:(RCTUITextView *)textView shouldChangeTextInRange:(NSRange)range replacementText:(NSString *)text
+- (BOOL) my_textView:(UITextView *)textView shouldChangeTextInRange:(NSRange)range replacementText:(NSString *)text
 {
-    [self my_textView:textView shouldChangeTextInRange:range replacementText:text];
+    BOOL res = [self my_textView:textView shouldChangeTextInRange:range replacementText:text];
 
     NSDictionary* body = @{
         @"target": self.reactTag,
@@ -62,6 +63,7 @@
     };
 
     [self.myEventDispatcher sendInputEventWithName:@"rangeChange" body:body];
+    return res;
 }
 
 @end
