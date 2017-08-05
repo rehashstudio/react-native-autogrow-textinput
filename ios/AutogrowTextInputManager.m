@@ -10,8 +10,10 @@
 
 #if __has_include(<React/RCTTextView.h>)
 #import <React/RCTTextView.h>
+#import <React/RCTEventDispatcher.h>
 #else
 #import "RCTTextView.h"
+#import "RCTEventDispatcher.h"
 #endif
 
 #import <objc/runtime.h>
