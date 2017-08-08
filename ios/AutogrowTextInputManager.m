@@ -10,16 +10,117 @@
 
 #if __has_include(<React/RCTTextView.h>)
 #import <React/RCTTextView.h>
-#import <React/RCTEventDispatcher.h>
+#import <React/RCTTextViewManager.h>
+#import <React/RCTTextSelection.h>
 #else
 #import "RCTTextView.h"
-#import "RCTEventDispatcher.h"
+#import "RCTTextViewManager.h"
+#import "RCTTextSelection.h"
 #endif
 
 #import <objc/runtime.h>
 
+@implementation RCTTextViewManager(RangeChange)
+
+RCT_EXPORT_VIEW_PROPERTY(onRangeChange, RCTBubblingEventBlock);
+
+@end
+
+@interface RCTTextView(RangeChange)
+@property(nonatomic, copy) RCTBubblingEventBlock onRangeChange;
+@property(assign) int isInTextDidChange;
+@property(nonatomic, copy) UITextView* myTextView;
+@end
+
+@implementation RCTTextView(RangeChange)
+
+- (void)setOnRangeChange:(RCTBubblingEventBlock)object {
+    objc_setAssociatedObject(self, @selector(onRangeChange), object, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+- (RCTBubblingEventBlock)onRangeChange {
+    return objc_getAssociatedObject(self, @selector(onRangeChange));
+}
+
+- (void)setMyTextView:(UITextView*)object {
+    objc_setAssociatedObject(self, @selector(myTextView), object, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+- (UITextView*)myTextView {
+    return objc_getAssociatedObject(self, @selector(myTextView));
+}
+
+- (void)setIsInTextDidChange:(int)didChange {
+    objc_setAssociatedObject(self, @selector(isInTextDidChange), @(didChange), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+- (int)isInTextDidChange {
+    return [objc_getAssociatedObject(self, @selector(isInTextDidChange)) intValue];
+}
+
+- (BOOL) my_textView:(UITextView *)textView shouldChangeTextInRange:(NSRange)range replacementText:(NSString *)text
+{
+    self.myTextView = textView;
+
+    BOOL res = [self my_textView:textView shouldChangeTextInRange:range replacementText:text];
+    
+    if (self.isInTextDidChange > 0) {
+        return res;
+    }
+    
+    NSRange selectedRange = textView.selectedRange;
+    
+    NSDictionary* body = @{
+                           @"target": self.reactTag,
+                           @"replaceRange": @{
+                                   @"start": @(range.location),
+                                   @"end": @(range.location + range.length),
+                                   },
+                           @"selectedRange": @{
+                                   @"start": @(selectedRange.location),
+                                   @"end": @(selectedRange.location + selectedRange.length),
+                                   },
+                           @"text": text,
+                           };
+    
+    if (self.onRangeChange) {
+        self.onRangeChange(@{@"src": body});
+    }
+
+    return res;
+}
+
+- (void) my_textViewDidChange:(UITextView *)textView
+{
+    self.myTextView = textView;
+    self.isInTextDidChange += 1;
+    [self my_textViewDidChange:textView];
+    self.isInTextDidChange -= 1;
+}
+
+- (void)my_setSelection:(RCTTextSelection *)selection
+{
+    if (!selection) {
+        return;
+    }
+    
+    UITextView* tv = self.myTextView;
+    
+    UITextPosition *start = [tv positionFromPosition:tv.beginningOfDocument offset:selection.start];
+    UITextPosition *end = [tv positionFromPosition:tv.beginningOfDocument offset:selection.end];
+    
+    if (start && end) {
+        [self my_setSelection:selection];
+    }
+}
+
+@end
+
+@implementation UITextView(OnRangeChange)
+
+@end
+
 @interface RCTTextView(SetTextNotifyChange)
-@property(assign) RCTEventDispatcher* myEventDispatcher;
 @end
 
 @implementation RCTTextView(SetTextNotifyChange)
@@ -36,38 +137,6 @@
   }
 }
 
-@dynamic myEventDispatcher;
-
-- (instancetype)my_initWithEventDispatcher:(RCTEventDispatcher *)eventDispatcher
-{
-    RCTTextView* textView = [self my_initWithEventDispatcher:eventDispatcher];
-    textView.myEventDispatcher = eventDispatcher;
-    return textView;
-}
-
-- (void)setMyEventDispatcher:(id)object {
-     objc_setAssociatedObject(self, @selector(myEventDispatcher), object, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-}
-
-- (id)myEventDispatcher {
-    return objc_getAssociatedObject(self, @selector(myEventDispatcher));
-}
-
-- (BOOL) my_textView:(UITextView *)textView shouldChangeTextInRange:(NSRange)range replacementText:(NSString *)text
-{
-    BOOL res = [self my_textView:textView shouldChangeTextInRange:range replacementText:text];
-
-    NSDictionary* body = @{
-        @"target": self.reactTag,
-        @"rangeStart": @(range.location),
-        @"rangeEnd": @(range.location + range.length),
-        @"text": text,
-    };
-
-    [self.myEventDispatcher sendInputEventWithName:@"rangeChange" body:body];
-    return res;
-}
-
 @end
 
 @implementation AutoGrowTextInputManager
@@ -81,7 +150,7 @@ RCT_EXPORT_METHOD(setupNotifyChangeOnSetText)
     Class class = [RCTTextView class];
     method_exchangeImplementations(class_getInstanceMethod(class, @selector(setText:)), class_getInstanceMethod(class, @selector(my_setText:)));
     method_exchangeImplementations(class_getInstanceMethod(class, @selector(textView:shouldChangeTextInRange:replacementText:)), class_getInstanceMethod(class, @selector(my_textView:shouldChangeTextInRange:replacementText:)));
-    method_exchangeImplementations(class_getInstanceMethod(class, @selector(initWithEventDispatcher:)), class_getInstanceMethod(class, @selector(my_initWithEventDispatcher:)));
+      method_exchangeImplementations(class_getInstanceMethod(class, @selector(setSelection:)), class_getInstanceMethod(class, @selector(my_setSelection:)));
   });
 }
 
