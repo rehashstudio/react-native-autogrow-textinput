@@ -8,19 +8,13 @@
 
 #import "AutogrowTextInputManager.h"
 
-#if __has_include(<React/RCTTextView.h>)
-#import <React/RCTTextView.h>
 #import <React/RCTUIManager.h>
 #import <React/RCTScrollView.h>
-#else
-#import "RCTTextView.h"
-#import "RCTUIManager.h"
-#import "RCTScrollView.h"
-#endif
 
 #import <objc/runtime.h>
 
 NSUInteger const kMaxDeferedGetScrollView = 15;
+NSUInteger const kAdditionalOffset = 5;
 
 @interface RCTTextView(SetTextNotifyChange)
 @property(assign) RCTEventDispatcher* myEventDispatcher;
@@ -92,9 +86,7 @@ RCT_EXPORT_MODULE();
     return dispatch_get_main_queue();
 }
 
-
 #pragma mark - public API
-
 
 RCT_EXPORT_METHOD(setupNotifyChangeOnSetText)
 {
@@ -112,12 +104,6 @@ RCT_EXPORT_METHOD(applySettingsForInput:(nonnull NSNumber *)textInputReactTag se
     UITextView *uiTextView = [self getTextViewForInput:textInputReactTag];
     if (uiTextView != nil)
     {
-        if([settings[@"disableScrollAndBounce"] boolValue])
-        {
-            uiTextView.scrollEnabled = NO;
-            uiTextView.bounces = NO;
-        }
-        
         if([settings[@"enableScrollToCaret"] boolValue])
         {
             _deferedInitializeAccessoryViewsCount = 0;
@@ -157,10 +143,9 @@ RCT_EXPORT_METHOD(performCleanupForInput:(nonnull NSNumber *)textInputReactTag)
 -(UITextView*)getTextViewForInput:(nonnull NSNumber *)textInputReactTag
 {
     UIView *_textView = [self.bridge.uiManager viewForReactTag:textInputReactTag];
-    if ([_textView isKindOfClass:[RCTTextView class]])
+    if ([_textView isKindOfClass:NSClassFromString(@"RCTTextView")])
     {
-        RCTTextView *textView = (RCTTextView *)_textView;
-        UITextView *uiTextView = [textView valueForKey:@"_textView"];
+        UITextView *uiTextView = [_textView valueForKey:@"_backedTextInput"];
         return uiTextView;
     }
     return nil;
@@ -221,13 +206,19 @@ RCT_EXPORT_METHOD(performCleanupForInput:(nonnull NSNumber *)textInputReactTag)
         CGRect caretRect = [textView caretRectForPosition:textView.selectedTextRange.end];
         if(caretRect.size.width > 0 && caretRect.size.height > 0)
         {
+            CGFloat carretAdditionalSize = 0;
+            if (caretRect.origin.x == 0) {
+                carretAdditionalSize = caretRect.size.height;
+            }
+            
             caretRect = [scrollView convertRect:caretRect fromView:textView];
+            caretRect.origin.y += carretAdditionalSize;
             
             CGRect visibleRect = CGRectMake(0, scrollView.contentOffset.y, scrollView.frame.size.width, scrollView.frame.size.height - scrollView.contentInset.bottom);
-            if (!CGRectIntersectsRect(visibleRect, caretRect))
+            if (caretRect.origin.y + caretRect.size.height + kAdditionalOffset > visibleRect.size.height + visibleRect.origin.y)
             {
                 BOOL caretIsAboveVisibleRect = caretRect.origin.y + caretRect.size.height < visibleRect.origin.y;
-                CGFloat yOffset = caretIsAboveVisibleRect ? caretRect.origin.y - 3 : caretRect.origin.y - visibleRect.size.height + caretRect.size.height + 3;
+                CGFloat yOffset = caretIsAboveVisibleRect ? caretRect.origin.y - kAdditionalOffset : caretRect.origin.y - visibleRect.size.height + caretRect.size.height + kAdditionalOffset;
                 [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, yOffset) animated:NO];
             }
         }
